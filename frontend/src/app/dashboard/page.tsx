@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Dashboard } from "@/types";
 
@@ -31,9 +32,10 @@ export default function DashboardsPage() {
       ) : (
         <div className="space-y-2">
           {dashboards.map((d) => (
-            <div
+            <Link
               key={d.id}
-              className="p-4 border border-neutral-200 rounded-lg hover:border-red-300 transition-colors"
+              href={`/dashboard/${d.id}`}
+              className="block p-4 border border-neutral-200 rounded-lg hover:border-red-300 transition-colors"
             >
               <div className="flex items-center justify-between">
                 <div className="font-medium text-black">{d.name}</div>
@@ -50,7 +52,7 @@ export default function DashboardsPage() {
               <div className="text-xs text-neutral-400 mt-2">
                 {new Date(d.created_at).toLocaleDateString()}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

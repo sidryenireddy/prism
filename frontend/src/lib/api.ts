@@ -18,6 +18,7 @@ import type {
   Card,
   Dashboard,
   ExecuteAnalysisResponse,
+  MockObjectType,
 } from "@/types";
 
 export const api = {
@@ -54,4 +55,15 @@ export const api = {
     request<Dashboard>(`/dashboards/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteDashboard: (id: string) =>
     request<void>(`/dashboards/${id}`, { method: "DELETE" }),
+
+  // AI
+  aiGenerate: (data: { analysis_id: string; prompt: string; cards: Card[] }) =>
+    request<{ cards: Card[] }>("/ai/generate", { method: "POST", body: JSON.stringify(data) }),
+  aiConfigure: (cardId: string, prompt: string) =>
+    request<Card>(`/ai/configure/${cardId}`, { method: "POST", body: JSON.stringify({ prompt }) }),
+
+  // Mock data
+  mockObjectTypes: () => request<MockObjectType[]>("/mock/object-types"),
+  mockObjects: (objectTypeId: string) =>
+    request<{ objects: Record<string, unknown>[]; totalCount: number }>(`/mock/objects?objectTypeId=${objectTypeId}`),
 };

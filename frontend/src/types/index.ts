@@ -1,38 +1,31 @@
 export type CardType =
-  // Object Set
   | "filter_object_set"
   | "search_around"
   | "set_math_union"
   | "set_math_intersection"
   | "set_math_difference"
-  // Visualization
   | "bar_chart"
   | "line_chart"
   | "pie_chart"
   | "scatter_plot"
   | "heat_grid"
   | "map"
-  // Table
   | "object_table"
   | "pivot_table"
   | "transform_table"
-  // Numeric
   | "count"
   | "sum"
   | "average"
   | "min"
   | "max"
-  // Time Series
   | "time_series_chart"
   | "rolling_aggregate"
   | "formula_plot"
-  // Parameter
   | "param_object_selection"
   | "param_date_range"
   | "param_numeric"
   | "param_string"
   | "param_boolean"
-  // Action
   | "action_button";
 
 export interface Analysis {
@@ -62,9 +55,21 @@ export interface Dashboard {
   analysis_id: string;
   name: string;
   published: boolean;
-  layout: Record<string, unknown>;
+  layout: DashboardLayout;
   created_at: string;
   updated_at: string;
+}
+
+export interface DashboardLayout {
+  cards: DashboardCardPlacement[];
+}
+
+export interface DashboardCardPlacement {
+  card_id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface CardResult {
@@ -76,6 +81,18 @@ export interface CardResult {
 
 export interface ExecuteAnalysisResponse {
   results: Record<string, CardResult>;
+}
+
+export interface MockObjectType {
+  id: string;
+  name: string;
+  properties: string[];
+}
+
+export interface ChartDataPoint {
+  name: string;
+  value: number;
+  [key: string]: unknown;
 }
 
 export const CARD_CATEGORIES = {
@@ -92,12 +109,10 @@ export const CARD_CATEGORIES = {
     { type: "pie_chart" as CardType, label: "Pie Chart" },
     { type: "scatter_plot" as CardType, label: "Scatter Plot" },
     { type: "heat_grid" as CardType, label: "Heat Grid" },
-    { type: "map" as CardType, label: "Map" },
   ],
   Table: [
     { type: "object_table" as CardType, label: "Object Table" },
     { type: "pivot_table" as CardType, label: "Pivot Table" },
-    { type: "transform_table" as CardType, label: "Transform Table" },
   ],
   Numeric: [
     { type: "count" as CardType, label: "Count" },
@@ -105,11 +120,6 @@ export const CARD_CATEGORIES = {
     { type: "average" as CardType, label: "Average" },
     { type: "min" as CardType, label: "Min" },
     { type: "max" as CardType, label: "Max" },
-  ],
-  "Time Series": [
-    { type: "time_series_chart" as CardType, label: "Time Series Chart" },
-    { type: "rolling_aggregate" as CardType, label: "Rolling Aggregate" },
-    { type: "formula_plot" as CardType, label: "Formula Plot" },
   ],
   Parameter: [
     { type: "param_object_selection" as CardType, label: "Object Selection" },
@@ -122,3 +132,19 @@ export const CARD_CATEGORIES = {
     { type: "action_button" as CardType, label: "Action Button" },
   ],
 } as const;
+
+export const VIZ_CARD_TYPES: CardType[] = [
+  "bar_chart", "line_chart", "pie_chart", "scatter_plot", "heat_grid",
+];
+
+export const NUMERIC_CARD_TYPES: CardType[] = [
+  "count", "sum", "average", "min", "max",
+];
+
+export const TABLE_CARD_TYPES: CardType[] = [
+  "object_table", "pivot_table",
+];
+
+export const PARAM_CARD_TYPES: CardType[] = [
+  "param_object_selection", "param_date_range", "param_numeric", "param_string", "param_boolean",
+];

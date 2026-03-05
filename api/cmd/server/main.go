@@ -44,6 +44,8 @@ func main() {
 	analysisHandler := handlers.NewAnalysisHandler(pool)
 	cardHandler := handlers.NewCardHandler(pool, eng)
 	dashboardHandler := handlers.NewDashboardHandler(pool)
+	aiHandler := handlers.NewAIHandler(pool)
+	mockDataHandler := handlers.NewMockDataHandler()
 
 	r := chi.NewRouter()
 
@@ -51,7 +53,7 @@ func main() {
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RequestID)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://127.0.0.1:3000"},
+		AllowedOrigins:   []string{"http://localhost:*", "http://127.0.0.1:*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -70,13 +72,13 @@ func main() {
 		r.Patch("/analyses/{id}", analysisHandler.Update)
 		r.Delete("/analyses/{id}", analysisHandler.Delete)
 
-		// Cards (nested under analyses)
+		// Cards
 		r.Get("/analyses/{analysisId}/cards", cardHandler.List)
 		r.Post("/analyses/{analysisId}/cards", cardHandler.Create)
 		r.Patch("/analyses/{analysisId}/cards/{cardId}", cardHandler.Update)
 		r.Delete("/analyses/{analysisId}/cards/{cardId}", cardHandler.Delete)
 
-		// Execute analysis (run all cards in topological order)
+		// Execute
 		r.Post("/analyses/{analysisId}/execute", cardHandler.Execute)
 
 		// Dashboards
@@ -85,6 +87,14 @@ func main() {
 		r.Get("/dashboards/{id}", dashboardHandler.Get)
 		r.Patch("/dashboards/{id}", dashboardHandler.Update)
 		r.Delete("/dashboards/{id}", dashboardHandler.Delete)
+
+		// AI
+		r.Post("/ai/generate", aiHandler.Generate)
+		r.Post("/ai/configure/{cardId}", aiHandler.Configure)
+
+		// Mock data
+		r.Get("/mock/object-types", mockDataHandler.ObjectTypes)
+		r.Get("/mock/objects", mockDataHandler.Objects)
 	})
 
 	port := os.Getenv("PORT")
