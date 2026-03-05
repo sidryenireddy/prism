@@ -12,10 +12,11 @@ interface CardNodeData {
   onDelete: () => void;
   onSelect: () => void;
   onParamChange?: (value: unknown) => void;
+  onExecuteAction?: () => void;
 }
 
 function CardNodeComponent({ data }: NodeProps) {
-  const { card, result, onDelete, onSelect, onParamChange } = data as unknown as CardNodeData;
+  const { card, result, onDelete, onSelect, onParamChange, onExecuteAction } = data as unknown as CardNodeData;
 
   const categoryColor = getCategoryColor(card.card_type);
   const isParam = PARAM_CARD_TYPES.includes(card.card_type);
@@ -43,6 +44,7 @@ function CardNodeComponent({ data }: NodeProps) {
             config={card.config}
             compact
             onParamChange={onParamChange}
+            onExecuteAction={onExecuteAction}
           />
         </div>
       )}
@@ -72,6 +74,12 @@ function getCategoryColor(cardType: string): string {
     return "bg-red-50 text-red-700";
   if (["bar_chart", "line_chart", "pie_chart", "scatter_plot", "heat_grid"].includes(cardType))
     return "bg-neutral-100 text-neutral-700";
+  if (["time_series_chart", "rolling_aggregate"].includes(cardType))
+    return "bg-neutral-100 text-neutral-700";
+  if (cardType === "formula")
+    return "bg-red-50 text-red-700";
+  if (cardType === "overlay_chart")
+    return "bg-neutral-200 text-neutral-700";
   if (cardType.includes("table"))
     return "bg-neutral-50 text-neutral-600";
   if (["count", "sum", "average", "min", "max"].includes(cardType))

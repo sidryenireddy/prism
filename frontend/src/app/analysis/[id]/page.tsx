@@ -19,6 +19,10 @@ export default function AnalysisPage() {
   const [showDashboardModal, setShowDashboardModal] = useState(false);
   const [dashboardName, setDashboardName] = useState("");
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showDatasetModal, setShowDatasetModal] = useState(false);
+  const [datasetCardId, setDatasetCardId] = useState("");
+  const [datasetName, setDatasetName] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -105,6 +109,38 @@ export default function AnalysisPage() {
     [analysisId, cards]
   );
 
+  const handleExecuteAction = useCallback(
+    async (cardId: string) => {
+      try {
+        const result = await api.executeAction(cardId);
+        setResults((prev) => ({ ...prev, [cardId]: result }));
+      } catch {
+        // action execution failed
+      }
+    },
+    []
+  );
+
+  const handleSaveDataset = useCallback(
+    (cardId: string) => {
+      const card = cards.find((c) => c.id === cardId);
+      setDatasetCardId(cardId);
+      setDatasetName(card?.label || "Untitled Dataset");
+      setShowDatasetModal(true);
+    },
+    [cards]
+  );
+
+  const handleConfirmSaveDataset = async () => {
+    if (!datasetName.trim() || !datasetCardId) return;
+    await api.saveDataset({
+      analysis_id: analysisId,
+      card_id: datasetCardId,
+      name: datasetName,
+    });
+    setShowDatasetModal(false);
+  };
+
   const handleCreateDashboard = async () => {
     if (!dashboardName.trim() || selectedCardIds.size === 0) return;
     const placements = Array.from(selectedCardIds).map((cardId, i) => ({
@@ -143,6 +179,10 @@ export default function AnalysisPage() {
     );
   }
 
+  const shareUrl = analysis.share_token
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/analysis/shared/${analysis.share_token}`
+    : "";
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between shrink-0">
@@ -160,16 +200,24 @@ export default function AnalysisPage() {
             </span>
           )}
         </div>
-        <button
-          onClick={() => {
-            setDashboardName(analysis.name + " Dashboard");
-            setSelectedCardIds(new Set(cards.map((c) => c.id)));
-            setShowDashboardModal(true);
-          }}
-          className="px-3 py-1.5 border border-neutral-300 text-sm text-black rounded hover:bg-neutral-50 transition-colors"
-        >
-          Create Dashboard
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="px-3 py-1.5 border border-neutral-300 text-sm text-black rounded hover:bg-neutral-50 transition-colors"
+          >
+            Share
+          </button>
+          <button
+            onClick={() => {
+              setDashboardName(analysis.name + " Dashboard");
+              setSelectedCardIds(new Set(cards.map((c) => c.id)));
+              setShowDashboardModal(true);
+            }}
+            className="px-3 py-1.5 border border-neutral-300 text-sm text-black rounded hover:bg-neutral-50 transition-colors"
+          >
+            Create Dashboard
+          </button>
+        </div>
       </div>
       <div className="flex-1">
         <AnalysisCanvas
@@ -182,8 +230,71 @@ export default function AnalysisPage() {
           onConnect={handleConnect}
           onExecute={handleExecute}
           onAiGenerate={handleAiGenerate}
+          onExecuteAction={handleExecuteAction}
+          onSaveDataset={handleSaveDataset}
         />
       </div>
+
+      {/* Share modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-[420px]">
+            <div className="p-4 border-b border-neutral-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-black">Share Analysis</h2>
+              <button onClick={() => setShowShareModal(false)} className="text-neutral-400 hover:text-black">x</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Share URL</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={shareUrl}
+                    className="flex-1 px-3 py-2 border border-neutral-300 rounded text-sm text-black bg-neutral-50"
+                  />
+                  <button
+                    onClick={() => navigator.clipboard.writeText(shareUrl)}
+                    className="px-3 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-neutral-500">
+                Anyone with this link can view this analysis and its card configurations.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dataset save modal */}
+      {showDatasetModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-[400px]">
+            <div className="p-4 border-b border-neutral-200 flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-black">Save as Dataset</h2>
+              <button onClick={() => setShowDatasetModal(false)} className="text-neutral-400 hover:text-black">x</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Dataset Name</label>
+                <input
+                  type="text"
+                  value={datasetName}
+                  onChange={(e) => setDatasetName(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-300 rounded text-sm text-black"
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-neutral-200 flex justify-end gap-2">
+              <button onClick={() => setShowDatasetModal(false)} className="px-4 py-2 text-sm text-neutral-600 hover:text-black">Cancel</button>
+              <button onClick={handleConfirmSaveDataset} className="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dashboard creation modal */}
       {showDashboardModal && (
@@ -227,18 +338,8 @@ export default function AnalysisPage() {
               </div>
             </div>
             <div className="p-4 border-t border-neutral-200 flex justify-end gap-2">
-              <button
-                onClick={() => setShowDashboardModal(false)}
-                className="px-4 py-2 text-sm text-neutral-600 hover:text-black"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateDashboard}
-                className="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700"
-              >
-                Publish Dashboard
-              </button>
+              <button onClick={() => setShowDashboardModal(false)} className="px-4 py-2 text-sm text-neutral-600 hover:text-black">Cancel</button>
+              <button onClick={handleCreateDashboard} className="px-4 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700">Publish Dashboard</button>
             </div>
           </div>
         </div>

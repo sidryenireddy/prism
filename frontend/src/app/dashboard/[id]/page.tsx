@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -16,6 +16,23 @@ export default function DashboardViewerPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [results, setResults] = useState<Record<string, CardResult>>({});
   const [loading, setLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(0); // seconds, 0 = off
+  const dashRef = useRef<HTMLDivElement>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const executeAndSetResults = useCallback(async (analysisId: string) => {
+    try {
+      const response = await api.executeAnalysis(analysisId);
+      const parsed: Record<string, CardResult> = {};
+      for (const [id, raw] of Object.entries(response.results)) {
+        parsed[id] = typeof raw === "string" ? JSON.parse(raw) : raw;
+      }
+      setResults(parsed);
+    } catch {
+      // execution might fail
+    }
+  }, []);
 
   useEffect(() => {
     api
@@ -25,21 +42,27 @@ export default function DashboardViewerPage() {
         const allCards = await api.listCards(d.analysis_id);
         const dashCardIds = new Set(d.layout.cards.map((p) => p.card_id));
         setCards(allCards.filter((c) => dashCardIds.has(c.id)));
-        // Auto-execute
-        try {
-          const response = await api.executeAnalysis(d.analysis_id);
-          const parsed: Record<string, CardResult> = {};
-          for (const [id, raw] of Object.entries(response.results)) {
-            parsed[id] = typeof raw === "string" ? JSON.parse(raw) : raw;
-          }
-          setResults(parsed);
-        } catch {
-          // execution might fail
-        }
+        await executeAndSetResults(d.analysis_id);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [dashboardId]);
+  }, [dashboardId, executeAndSetResults]);
+
+  // Auto-refresh
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (autoRefresh > 0 && dashboard) {
+      intervalRef.current = setInterval(() => {
+        executeAndSetResults(dashboard.analysis_id);
+      }, autoRefresh * 1000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [autoRefresh, dashboard, executeAndSetResults]);
 
   const handleParamChange = useCallback(
     async (cardId: string, value: unknown) => {
@@ -54,20 +77,25 @@ export default function DashboardViewerPage() {
           c.id === cardId ? { ...c, config: { ...c.config, value } } : c
         )
       );
-      // Re-execute after param change
-      try {
-        const response = await api.executeAnalysis(dashboard.analysis_id);
-        const parsed: Record<string, CardResult> = {};
-        for (const [id, raw] of Object.entries(response.results)) {
-          parsed[id] = typeof raw === "string" ? JSON.parse(raw) : raw;
-        }
-        setResults(parsed);
-      } catch {
-        // execution might fail
-      }
+      await executeAndSetResults(dashboard.analysis_id);
     },
-    [dashboard, cards]
+    [dashboard, cards, executeAndSetResults]
   );
+
+  const toggleFullscreen = () => {
+    if (!isFullscreen) {
+      dashRef.current?.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+    setIsFullscreen(!isFullscreen);
+  };
+
+  const handleExport = async () => {
+    if (!dashRef.current) return;
+    // Use browser print as PDF export
+    window.print();
+  };
 
   if (loading) {
     return (
@@ -92,13 +120,12 @@ export default function DashboardViewerPage() {
     dashboard.layout.cards.map((p) => [p.card_id, p])
   );
 
-  // Grid: 12 columns
   const gridCols = 12;
-  const cellSize = 80; // px per grid unit
+  const cellSize = 80;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between shrink-0">
+    <div ref={dashRef} className="flex flex-col h-full bg-white">
+      <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between shrink-0 print:hidden">
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard"
@@ -111,10 +138,41 @@ export default function DashboardViewerPage() {
             <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Published</span>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={autoRefresh}
+            onChange={(e) => setAutoRefresh(parseInt(e.target.value))}
+            className="text-xs border border-neutral-300 rounded px-2 py-1 text-black"
+          >
+            <option value={0}>Auto-refresh: Off</option>
+            <option value={10}>10s</option>
+            <option value={30}>30s</option>
+            <option value={60}>1m</option>
+            <option value={300}>5m</option>
+          </select>
+          <button
+            onClick={toggleFullscreen}
+            className="px-3 py-1.5 border border-neutral-300 text-sm text-black rounded hover:bg-neutral-50"
+          >
+            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          </button>
+          <button
+            onClick={handleExport}
+            className="px-3 py-1.5 border border-neutral-300 text-sm text-black rounded hover:bg-neutral-50"
+          >
+            Export PDF
+          </button>
+          <button
+            onClick={() => executeAndSetResults(dashboard.analysis_id)}
+            className="px-3 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-auto p-6">
         <div
-          className="relative"
+          className="relative mx-auto"
           style={{
             width: gridCols * cellSize,
             minHeight: 600,

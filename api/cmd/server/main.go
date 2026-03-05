@@ -46,6 +46,7 @@ func main() {
 	dashboardHandler := handlers.NewDashboardHandler(pool)
 	aiHandler := handlers.NewAIHandler(pool)
 	mockDataHandler := handlers.NewMockDataHandler()
+	datasetHandler := handlers.NewDatasetHandler(pool, eng)
 
 	r := chi.NewRouter()
 
@@ -71,6 +72,7 @@ func main() {
 		r.Get("/analyses/{id}", analysisHandler.Get)
 		r.Patch("/analyses/{id}", analysisHandler.Update)
 		r.Delete("/analyses/{id}", analysisHandler.Delete)
+		r.Get("/analyses/shared/{token}", analysisHandler.GetByShareToken)
 
 		// Cards
 		r.Get("/analyses/{analysisId}/cards", cardHandler.List)
@@ -80,6 +82,7 @@ func main() {
 
 		// Execute
 		r.Post("/analyses/{analysisId}/execute", cardHandler.Execute)
+		r.Post("/cards/{cardId}/execute-action", cardHandler.ExecuteAction)
 
 		// Dashboards
 		r.Get("/dashboards", dashboardHandler.List)
@@ -87,6 +90,12 @@ func main() {
 		r.Get("/dashboards/{id}", dashboardHandler.Get)
 		r.Patch("/dashboards/{id}", dashboardHandler.Update)
 		r.Delete("/dashboards/{id}", dashboardHandler.Delete)
+
+		// Datasets
+		r.Post("/datasets", datasetHandler.Save)
+		r.Get("/datasets", datasetHandler.List)
+		r.Get("/datasets/{id}", datasetHandler.Get)
+		r.Delete("/datasets/{id}", datasetHandler.Delete)
 
 		// AI
 		r.Post("/ai/generate", aiHandler.Generate)

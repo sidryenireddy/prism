@@ -24,12 +24,10 @@ const (
 	CardTypePieChart    CardType = "pie_chart"
 	CardTypeScatterPlot CardType = "scatter_plot"
 	CardTypeHeatGrid    CardType = "heat_grid"
-	CardTypeMap         CardType = "map"
 
 	// Table cards
-	CardTypeObjectTable    CardType = "object_table"
-	CardTypePivotTable     CardType = "pivot_table"
-	CardTypeTransformTable CardType = "transform_table"
+	CardTypeObjectTable CardType = "object_table"
+	CardTypePivotTable  CardType = "pivot_table"
 
 	// Numeric cards
 	CardTypeCount   CardType = "count"
@@ -41,7 +39,12 @@ const (
 	// Time Series cards
 	CardTypeTimeSeriesChart  CardType = "time_series_chart"
 	CardTypeRollingAggregate CardType = "rolling_aggregate"
-	CardTypeFormulaPlot      CardType = "formula_plot"
+
+	// Formula card
+	CardTypeFormula CardType = "formula"
+
+	// Overlay chart
+	CardTypeOverlayChart CardType = "overlay_chart"
 
 	// Parameter cards
 	CardTypeParamObjectSelection CardType = "param_object_selection"
@@ -59,6 +62,7 @@ type Analysis struct {
 	Name        string    `json:"name" db:"name"`
 	Description string    `json:"description" db:"description"`
 	Owner       string    `json:"owner" db:"owner"`
+	ShareToken  string    `json:"share_token,omitempty" db:"share_token"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
 }
@@ -84,6 +88,16 @@ type Dashboard struct {
 	Layout     json.RawMessage `json:"layout" db:"layout"`
 	CreatedAt  time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt  time.Time       `json:"updated_at" db:"updated_at"`
+}
+
+type Dataset struct {
+	ID         uuid.UUID       `json:"id" db:"id"`
+	AnalysisID uuid.UUID       `json:"analysis_id" db:"analysis_id"`
+	CardID     uuid.UUID       `json:"card_id" db:"card_id"`
+	Name       string          `json:"name" db:"name"`
+	Data       json.RawMessage `json:"data" db:"data"`
+	RowCount   int             `json:"row_count" db:"row_count"`
+	CreatedAt  time.Time       `json:"created_at" db:"created_at"`
 }
 
 // API request/response types
@@ -137,4 +151,14 @@ type CardResult struct {
 	CardType CardType        `json:"card_type"`
 	Data     json.RawMessage `json:"data"`
 	Error    string          `json:"error,omitempty"`
+}
+
+type SaveDatasetRequest struct {
+	AnalysisID string `json:"analysis_id"`
+	CardID     string `json:"card_id"`
+	Name       string `json:"name"`
+}
+
+type ExecuteActionRequest struct {
+	CardID string `json:"card_id"`
 }

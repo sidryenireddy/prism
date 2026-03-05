@@ -36,6 +36,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		name TEXT NOT NULL,
 		description TEXT NOT NULL DEFAULT '',
 		owner TEXT NOT NULL,
+		share_token TEXT NOT NULL DEFAULT '',
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
@@ -63,10 +64,28 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
+	CREATE TABLE IF NOT EXISTS datasets (
+		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+		analysis_id UUID NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
+		card_id UUID NOT NULL,
+		name TEXT NOT NULL,
+		data JSONB NOT NULL DEFAULT '{}',
+		row_count INTEGER NOT NULL DEFAULT 0,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_cards_analysis_id ON cards(analysis_id);
 	CREATE INDEX IF NOT EXISTS idx_dashboards_analysis_id ON dashboards(analysis_id);
+	CREATE INDEX IF NOT EXISTS idx_datasets_analysis_id ON datasets(analysis_id);
 	`
 
 	_, err := pool.Exec(ctx, schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Add share_token column if missing (migration for existing DBs)
+	_, _ = pool.Exec(ctx, "ALTER TABLE analyses ADD COLUMN IF NOT EXISTS share_token TEXT NOT NULL DEFAULT ''")
+
+	return nil
 }

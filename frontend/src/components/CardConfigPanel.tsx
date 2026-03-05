@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import type { Card, CardResult } from "@/types";
-import { VIZ_CARD_TYPES, NUMERIC_CARD_TYPES, PARAM_CARD_TYPES } from "@/types";
+import { VIZ_CARD_TYPES, NUMERIC_CARD_TYPES, PARAM_CARD_TYPES, TIME_SERIES_CARD_TYPES } from "@/types";
 import { CardResultRenderer } from "./cards/CardResultRenderer";
+import { FormulaEditor } from "./cards/FormulaEditor";
 import { api } from "@/lib/api";
 
 interface CardConfigPanelProps {
@@ -11,6 +12,8 @@ interface CardConfigPanelProps {
   result?: CardResult;
   onUpdate: (data: Partial<Card>) => void;
   onClose: () => void;
+  onExecuteAction?: () => void;
+  onSaveDataset?: () => void;
 }
 
 export function CardConfigPanel({
@@ -18,6 +21,8 @@ export function CardConfigPanel({
   result,
   onUpdate,
   onClose,
+  onExecuteAction,
+  onSaveDataset,
 }: CardConfigPanelProps) {
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -73,10 +78,8 @@ export function CardConfigPanel({
           />
         </div>
 
-        {/* Type-specific config */}
         <TypeSpecificConfig card={card} updateConfig={updateConfig} />
 
-        {/* Raw JSON config */}
         <div>
           <label className="block text-xs font-medium text-neutral-500 mb-1">Config JSON</label>
           <textarea
@@ -94,7 +97,6 @@ export function CardConfigPanel({
           />
         </div>
 
-        {/* AI Configure */}
         <div>
           <label className="block text-xs font-medium text-neutral-500 mb-1">AI Configure</label>
           <div className="flex gap-1">
@@ -116,7 +118,6 @@ export function CardConfigPanel({
           </div>
         </div>
 
-        {/* Result */}
         {result && (
           <div>
             <label className="block text-xs font-medium text-neutral-500 mb-1">Result</label>
@@ -125,6 +126,8 @@ export function CardConfigPanel({
                 cardType={card.card_type}
                 result={result}
                 config={card.config}
+                onExecuteAction={onExecuteAction}
+                onSaveDataset={onSaveDataset}
               />
             </div>
           </div>
@@ -153,7 +156,7 @@ function TypeSpecificConfig({
             value={(config.objectTypeId as string) || ""}
             onChange={(e) => updateConfig({ objectTypeId: e.target.value })}
             className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
-            placeholder="e.g. customers"
+            placeholder="e.g. ot-customers"
           />
         </div>
         <div>
@@ -184,16 +187,43 @@ function TypeSpecificConfig({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-neutral-500 mb-1">Metric</label>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Metric Type</label>
           <select
-            value={(config.metric as string) || "count"}
-            onChange={(e) => updateConfig({ metric: e.target.value })}
+            value={(config.metricType as string) || "count"}
+            onChange={(e) => updateConfig({ metricType: e.target.value })}
             className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
           >
             <option value="count">Count</option>
             <option value="sum">Sum</option>
-            <option value="average">Average</option>
+            <option value="avg">Average</option>
           </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Value Field</label>
+          <input
+            type="text"
+            value={(config.metric as string) || (config.valueField as string) || ""}
+            onChange={(e) => updateConfig({ metric: e.target.value })}
+            className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
+            placeholder="e.g. amount"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (TIME_SERIES_CARD_TYPES.includes(card.card_type)) {
+    return (
+      <div className="space-y-2">
+        <div>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Time Field</label>
+          <input
+            type="text"
+            value={(config.timeField as string) || ""}
+            onChange={(e) => updateConfig({ timeField: e.target.value })}
+            className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
+            placeholder="e.g. order_date"
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 mb-1">Value Field</label>
@@ -205,6 +235,53 @@ function TypeSpecificConfig({
             placeholder="e.g. amount"
           />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Group By</label>
+          <input
+            type="text"
+            value={(config.groupBy as string) || ""}
+            onChange={(e) => updateConfig({ groupBy: e.target.value })}
+            className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
+            placeholder="e.g. region (one line per group)"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Metric</label>
+          <select
+            value={(config.metric as string) || "count"}
+            onChange={(e) => updateConfig({ metric: e.target.value })}
+            className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
+          >
+            <option value="count">Count</option>
+            <option value="sum">Sum</option>
+            <option value="avg">Average</option>
+          </select>
+        </div>
+        {card.card_type === "rolling_aggregate" && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-neutral-500 mb-1">Window Size</label>
+              <input
+                type="number"
+                value={(config.window as number) || 3}
+                onChange={(e) => updateConfig({ window: parseInt(e.target.value) || 3 })}
+                className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
+                min={2}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-neutral-500 mb-1">Type</label>
+              <select
+                value={(config.type as string) || "moving_average"}
+                onChange={(e) => updateConfig({ type: e.target.value })}
+                className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
+              >
+                <option value="moving_average">Moving Average</option>
+                <option value="moving_sum">Moving Sum</option>
+              </select>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -219,20 +296,31 @@ function TypeSpecificConfig({
             value={(config.objectTypeId as string) || ""}
             onChange={(e) => updateConfig({ objectTypeId: e.target.value })}
             className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
-            placeholder="e.g. orders"
+            placeholder="e.g. ot-orders"
           />
         </div>
         <div>
           <label className="block text-xs font-medium text-neutral-500 mb-1">Field</label>
           <input
             type="text"
-            value={(config.field as string) || ""}
-            onChange={(e) => updateConfig({ field: e.target.value })}
+            value={(config.field as string) || (config.property as string) || ""}
+            onChange={(e) => updateConfig({ field: e.target.value, property: e.target.value })}
             className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
             placeholder="e.g. amount"
           />
         </div>
       </div>
+    );
+  }
+
+  if (card.card_type === "formula") {
+    return (
+      <FormulaEditor
+        expression={(config.expression as string) || ""}
+        onChange={(expr) => updateConfig({ expression: expr })}
+        mode={(config.mode as string) || "aggregate"}
+        onModeChange={(mode) => updateConfig({ mode })}
+      />
     );
   }
 
@@ -267,6 +355,36 @@ function TypeSpecificConfig({
             onChange={(e) => updateConfig({ valueField: e.target.value })}
             className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
             placeholder="e.g. amount"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (card.card_type === "action_button") {
+    return (
+      <div className="space-y-2">
+        <div>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Action Type</label>
+          <input
+            type="text"
+            value={(config.actionTypeId as string) || ""}
+            onChange={(e) => updateConfig({ actionTypeId: e.target.value })}
+            className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black"
+            placeholder="e.g. update-order-status"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-neutral-500 mb-1">Parameter Mappings (JSON)</label>
+          <textarea
+            value={JSON.stringify(config.parameterMappings || {}, null, 2)}
+            onChange={(e) => {
+              try {
+                updateConfig({ parameterMappings: JSON.parse(e.target.value) });
+              } catch { /* invalid */ }
+            }}
+            className="w-full px-2 py-1 border border-neutral-300 rounded text-xs text-black font-mono h-16 resize-y"
+            placeholder='{"status": "status"}'
           />
         </div>
       </div>

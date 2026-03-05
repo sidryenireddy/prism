@@ -21,7 +21,7 @@ func NewAnalysisHandler(db *pgxpool.Pool) *AnalysisHandler {
 
 func (h *AnalysisHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(r.Context(),
-		"SELECT id, name, description, owner, created_at, updated_at FROM analyses ORDER BY updated_at DESC")
+		"SELECT id, name, description, owner, share_token, created_at, updated_at FROM analyses ORDER BY updated_at DESC")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -31,7 +31,7 @@ func (h *AnalysisHandler) List(w http.ResponseWriter, r *http.Request) {
 	var analyses []models.Analysis
 	for rows.Next() {
 		var a models.Analysis
-		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.Owner, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Description, &a.Owner, &a.ShareToken, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -53,8 +53,8 @@ func (h *AnalysisHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	var a models.Analysis
 	err = h.db.QueryRow(r.Context(),
-		"SELECT id, name, description, owner, created_at, updated_at FROM analyses WHERE id = $1", id).
-		Scan(&a.ID, &a.Name, &a.Description, &a.Owner, &a.CreatedAt, &a.UpdatedAt)
+		"SELECT id, name, description, owner, share_token, created_at, updated_at FROM analyses WHERE id = $1", id).
+		Scan(&a.ID, &a.Name, &a.Description, &a.Owner, &a.ShareToken, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "analysis not found")
 		return
@@ -70,18 +70,21 @@ func (h *AnalysisHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	shareToken := uuid.New().String()[:8]
+
 	a := models.Analysis{
 		ID:          uuid.New(),
 		Name:        req.Name,
 		Description: req.Description,
 		Owner:       req.Owner,
+		ShareToken:  shareToken,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
 
 	_, err := h.db.Exec(r.Context(),
-		"INSERT INTO analyses (id, name, description, owner, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
-		a.ID, a.Name, a.Description, a.Owner, a.CreatedAt, a.UpdatedAt)
+		"INSERT INTO analyses (id, name, description, owner, share_token, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		a.ID, a.Name, a.Description, a.Owner, a.ShareToken, a.CreatedAt, a.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -105,8 +108,8 @@ func (h *AnalysisHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var a models.Analysis
 	err = h.db.QueryRow(r.Context(),
-		"SELECT id, name, description, owner, created_at, updated_at FROM analyses WHERE id = $1", id).
-		Scan(&a.ID, &a.Name, &a.Description, &a.Owner, &a.CreatedAt, &a.UpdatedAt)
+		"SELECT id, name, description, owner, share_token, created_at, updated_at FROM analyses WHERE id = $1", id).
+		Scan(&a.ID, &a.Name, &a.Description, &a.Owner, &a.ShareToken, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "analysis not found")
 		return
@@ -145,4 +148,23 @@ func (h *AnalysisHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AnalysisHandler) GetByShareToken(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "missing share token")
+		return
+	}
+
+	var a models.Analysis
+	err := h.db.QueryRow(r.Context(),
+		"SELECT id, name, description, owner, share_token, created_at, updated_at FROM analyses WHERE share_token = $1", token).
+		Scan(&a.ID, &a.Name, &a.Description, &a.Owner, &a.ShareToken, &a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "analysis not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, a)
 }

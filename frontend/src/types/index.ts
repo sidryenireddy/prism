@@ -9,10 +9,8 @@ export type CardType =
   | "pie_chart"
   | "scatter_plot"
   | "heat_grid"
-  | "map"
   | "object_table"
   | "pivot_table"
-  | "transform_table"
   | "count"
   | "sum"
   | "average"
@@ -20,7 +18,8 @@ export type CardType =
   | "max"
   | "time_series_chart"
   | "rolling_aggregate"
-  | "formula_plot"
+  | "formula"
+  | "overlay_chart"
   | "param_object_selection"
   | "param_date_range"
   | "param_numeric"
@@ -33,6 +32,7 @@ export interface Analysis {
   name: string;
   description: string;
   owner: string;
+  share_token?: string;
   created_at: string;
   updated_at: string;
 }
@@ -95,6 +95,26 @@ export interface ChartDataPoint {
   [key: string]: unknown;
 }
 
+export interface TimeSeriesPoint {
+  time: string;
+  value: number;
+}
+
+export interface TimeSeriesData {
+  name: string;
+  points: TimeSeriesPoint[];
+}
+
+export interface Dataset {
+  id: string;
+  analysis_id: string;
+  card_id: string;
+  name: string;
+  data: unknown;
+  row_count: number;
+  created_at: string;
+}
+
 export const CARD_CATEGORIES = {
   "Object Set": [
     { type: "filter_object_set" as CardType, label: "Filter Object Set" },
@@ -110,6 +130,10 @@ export const CARD_CATEGORIES = {
     { type: "scatter_plot" as CardType, label: "Scatter Plot" },
     { type: "heat_grid" as CardType, label: "Heat Grid" },
   ],
+  "Time Series": [
+    { type: "time_series_chart" as CardType, label: "Time Series Chart" },
+    { type: "rolling_aggregate" as CardType, label: "Rolling Aggregate" },
+  ],
   Table: [
     { type: "object_table" as CardType, label: "Object Table" },
     { type: "pivot_table" as CardType, label: "Pivot Table" },
@@ -120,6 +144,12 @@ export const CARD_CATEGORIES = {
     { type: "average" as CardType, label: "Average" },
     { type: "min" as CardType, label: "Min" },
     { type: "max" as CardType, label: "Max" },
+  ],
+  Formula: [
+    { type: "formula" as CardType, label: "Formula" },
+  ],
+  Overlay: [
+    { type: "overlay_chart" as CardType, label: "Overlay Chart" },
   ],
   Parameter: [
     { type: "param_object_selection" as CardType, label: "Object Selection" },
@@ -147,4 +177,8 @@ export const TABLE_CARD_TYPES: CardType[] = [
 
 export const PARAM_CARD_TYPES: CardType[] = [
   "param_object_selection", "param_date_range", "param_numeric", "param_string", "param_boolean",
+];
+
+export const TIME_SERIES_CARD_TYPES: CardType[] = [
+  "time_series_chart", "rolling_aggregate",
 ];

@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/sidryenireddy/prism/api/internal/formula"
 	"github.com/sidryenireddy/prism/api/internal/mockdata"
 	"github.com/sidryenireddy/prism/api/internal/models"
 	"github.com/sidryenireddy/prism/api/internal/ontology"
@@ -72,6 +76,14 @@ func (e *Engine) executeCard(ctx context.Context, card models.Card, inputs map[u
 		data, err = e.executeObjectTable(card, inputs)
 	case models.CardTypePivotTable:
 		data, err = e.executePivotTable(card, inputs)
+	case models.CardTypeTimeSeriesChart:
+		data, err = e.executeTimeSeries(card, inputs)
+	case models.CardTypeRollingAggregate:
+		data, err = e.executeRollingAggregate(card, inputs)
+	case models.CardTypeFormula:
+		data, err = e.executeFormula(card, inputs)
+	case models.CardTypeOverlayChart:
+		data, err = e.executeOverlayChart(card, inputs)
 	default:
 		data, err = e.executePassthrough(card, inputs)
 	}
@@ -89,15 +101,14 @@ func (e *Engine) executeCard(ctx context.Context, card models.Card, inputs map[u
 
 func (e *Engine) executeFilterObjectSet(ctx context.Context, card models.Card) (interface{}, error) {
 	var config struct {
-		ObjectTypeID string             `json:"objectTypeId"`
-		Filters      []mockdata.Filter  `json:"filters"`
-		Query        string             `json:"query"`
+		ObjectTypeID string            `json:"objectTypeId"`
+		Filters      []mockdata.Filter `json:"filters"`
+		Query        string            `json:"query"`
 	}
 	if err := json.Unmarshal(card.Config, &config); err != nil {
 		return nil, fmt.Errorf("parsing filter config: %w", err)
 	}
 
-	// Try mock data first
 	objects := mockdata.GetObjectsByType(config.ObjectTypeID)
 	if objects != nil {
 		filtered := mockdata.FilterObjects(objects, config.Filters)
@@ -107,7 +118,6 @@ func (e *Engine) executeFilterObjectSet(ctx context.Context, card models.Card) (
 		}, nil
 	}
 
-	// Fallback to ontology API
 	query := ontology.SearchQuery{
 		ObjectTypeID: config.ObjectTypeID,
 		Query:        config.Query,
@@ -136,7 +146,6 @@ func (e *Engine) executeSearchAround(ctx context.Context, card models.Card, inpu
 			otID, _ = obj["objectTypeID"].(string)
 		}
 
-		// Try mock data
 		mockID := id
 		if otID == "ot-customers" {
 			mockID = fmt.Sprintf("c-%s", id)
@@ -220,9 +229,15 @@ func (e *Engine) executeNumeric(ctx context.Context, card models.Card, inputs ma
 	var config struct {
 		ObjectTypeID string `json:"objectTypeId"`
 		Property     string `json:"property"`
+		Field        string `json:"field"`
 	}
 	if err := json.Unmarshal(card.Config, &config); err != nil {
 		return nil, fmt.Errorf("parsing numeric config: %w", err)
+	}
+
+	field := config.Property
+	if field == "" {
+		field = config.Field
 	}
 
 	esAggType := map[models.CardType]string{
@@ -233,14 +248,13 @@ func (e *Engine) executeNumeric(ctx context.Context, card models.Card, inputs ma
 		models.CardTypeMax:     "max",
 	}[card.CardType]
 
-	// Try from input objects first
 	inputObjects := extractObjects(inputs)
 	if len(inputObjects) > 0 {
 		var mockObjs []mockdata.MockObject
 		for _, o := range inputObjects {
 			mockObjs = append(mockObjs, mockdata.MockObject{Properties: o})
 		}
-		value := mockdata.Aggregate(mockObjs, config.Property, esAggType)
+		value := mockdata.Aggregate(mockObjs, field, esAggType)
 		return map[string]interface{}{
 			"value": value,
 			"label": card.Label,
@@ -248,10 +262,9 @@ func (e *Engine) executeNumeric(ctx context.Context, card models.Card, inputs ma
 		}, nil
 	}
 
-	// Try mock data
 	objects := mockdata.GetObjectsByType(config.ObjectTypeID)
 	if objects != nil {
-		value := mockdata.Aggregate(objects, config.Property, esAggType)
+		value := mockdata.Aggregate(objects, field, esAggType)
 		return map[string]interface{}{
 			"value": value,
 			"label": card.Label,
@@ -259,10 +272,9 @@ func (e *Engine) executeNumeric(ctx context.Context, card models.Card, inputs ma
 		}, nil
 	}
 
-	// Fallback to ontology
 	query := ontology.AggregationQuery{
 		ObjectTypeID: config.ObjectTypeID,
-		Metrics:      []ontology.AggMetric{{Field: config.Property, Type: esAggType}},
+		Metrics:      []ontology.AggMetric{{Field: field, Type: esAggType}},
 	}
 	return e.ontologyClient.AggregateObjects(ctx, query)
 }
@@ -270,8 +282,9 @@ func (e *Engine) executeNumeric(ctx context.Context, card models.Card, inputs ma
 func (e *Engine) executeVisualization(card models.Card, inputs map[uuid.UUID]*models.CardResult) (interface{}, error) {
 	var config struct {
 		GroupBy    string `json:"groupBy"`
-		Metric    string `json:"metric"`
+		Metric     string `json:"metric"`
 		MetricType string `json:"metricType"`
+		ValueField string `json:"valueField"`
 	}
 	if err := json.Unmarshal(card.Config, &config); err != nil {
 		config.GroupBy = "region"
@@ -279,6 +292,9 @@ func (e *Engine) executeVisualization(card models.Card, inputs map[uuid.UUID]*mo
 	}
 	if config.MetricType == "" {
 		config.MetricType = "count"
+	}
+	if config.ValueField != "" && config.Metric == "" {
+		config.Metric = config.ValueField
 	}
 
 	inputObjects := extractObjects(inputs)
@@ -289,7 +305,6 @@ func (e *Engine) executeVisualization(card models.Card, inputs map[uuid.UUID]*mo
 		}, nil
 	}
 
-	// Group objects
 	groups := map[string][]map[string]interface{}{}
 	for _, o := range inputObjects {
 		key := fmt.Sprintf("%v", o[config.GroupBy])
@@ -308,7 +323,7 @@ func (e *Engine) executeVisualization(card models.Card, inputs map[uuid.UUID]*mo
 				s += toFloat(o[config.Metric])
 			}
 			entry["value"] = s
-		case "avg":
+		case "avg", "average":
 			var s float64
 			for _, o := range objs {
 				s += toFloat(o[config.Metric])
@@ -320,7 +335,6 @@ func (e *Engine) executeVisualization(card models.Card, inputs map[uuid.UUID]*mo
 		chartData = append(chartData, entry)
 	}
 
-	// Sort by name for consistent ordering
 	sort.Slice(chartData, func(i, j int) bool {
 		return fmt.Sprintf("%v", chartData[i]["name"]) < fmt.Sprintf("%v", chartData[j]["name"])
 	})
@@ -345,7 +359,6 @@ func (e *Engine) executeObjectTable(card models.Card, inputs map[uuid.UUID]*mode
 
 	inputObjects := extractObjects(inputs)
 
-	// Auto-detect columns if not specified
 	if len(config.Columns) == 0 && len(inputObjects) > 0 {
 		for k := range inputObjects[0] {
 			if k != "objectTypeId" && k != "objectTypeID" {
@@ -384,7 +397,6 @@ func (e *Engine) executePivotTable(card models.Card, inputs map[uuid.UUID]*model
 
 	inputObjects := extractObjects(inputs)
 
-	// Build pivot
 	rowKeys := map[string]bool{}
 	colKeys := map[string]bool{}
 	cells := map[string]map[string][]float64{}
@@ -400,7 +412,6 @@ func (e *Engine) executePivotTable(card models.Card, inputs map[uuid.UUID]*model
 		cells[rk][ck] = append(cells[rk][ck], toFloat(o[config.ValueField]))
 	}
 
-	// Aggregate
 	pivotData := map[string]map[string]float64{}
 	for rk, cols := range cells {
 		pivotData[rk] = map[string]float64{}
@@ -443,10 +454,337 @@ func (e *Engine) executePivotTable(card models.Card, inputs map[uuid.UUID]*model
 	}, nil
 }
 
+// --- Time Series ---
+
+func (e *Engine) executeTimeSeries(card models.Card, inputs map[uuid.UUID]*models.CardResult) (interface{}, error) {
+	var config struct {
+		TimeField  string   `json:"timeField"`
+		ValueField string   `json:"valueField"`
+		GroupBy    string   `json:"groupBy"`
+		Metric     string   `json:"metric"` // count, sum, avg
+		Series     []string `json:"series"` // multiple value fields
+	}
+	if err := json.Unmarshal(card.Config, &config); err != nil {
+		config.TimeField = "order_date"
+		config.Metric = "count"
+	}
+	if config.TimeField == "" {
+		config.TimeField = "order_date"
+	}
+	if config.Metric == "" {
+		config.Metric = "count"
+	}
+
+	inputObjects := extractObjects(inputs)
+	if len(inputObjects) == 0 {
+		return map[string]interface{}{"series": []interface{}{}, "timeField": config.TimeField}, nil
+	}
+
+	// Sort by time field
+	sort.Slice(inputObjects, func(i, j int) bool {
+		ti := fmt.Sprintf("%v", inputObjects[i][config.TimeField])
+		tj := fmt.Sprintf("%v", inputObjects[j][config.TimeField])
+		return ti < tj
+	})
+
+	if config.GroupBy != "" {
+		// Grouped time series: one line per group value
+		groups := map[string][]map[string]interface{}{}
+		for _, o := range inputObjects {
+			gk := fmt.Sprintf("%v", o[config.GroupBy])
+			groups[gk] = append(groups[gk], o)
+		}
+
+		var seriesData []map[string]interface{}
+		for groupName, objs := range groups {
+			points := buildTimePoints(objs, config.TimeField, config.ValueField, config.Metric)
+			seriesData = append(seriesData, map[string]interface{}{
+				"name":   groupName,
+				"points": points,
+			})
+		}
+		sort.Slice(seriesData, func(i, j int) bool {
+			return fmt.Sprintf("%v", seriesData[i]["name"]) < fmt.Sprintf("%v", seriesData[j]["name"])
+		})
+
+		return map[string]interface{}{
+			"series":    seriesData,
+			"timeField": config.TimeField,
+			"grouped":   true,
+		}, nil
+	}
+
+	// Multiple series from different value fields
+	if len(config.Series) > 1 {
+		var seriesData []map[string]interface{}
+		for _, vf := range config.Series {
+			points := buildTimePoints(inputObjects, config.TimeField, vf, "raw")
+			seriesData = append(seriesData, map[string]interface{}{
+				"name":   vf,
+				"points": points,
+			})
+		}
+		return map[string]interface{}{
+			"series":    seriesData,
+			"timeField": config.TimeField,
+			"grouped":   true,
+		}, nil
+	}
+
+	// Single series
+	points := buildTimePoints(inputObjects, config.TimeField, config.ValueField, config.Metric)
+	return map[string]interface{}{
+		"series": []map[string]interface{}{
+			{"name": config.ValueField, "points": points},
+		},
+		"timeField": config.TimeField,
+		"grouped":   false,
+	}, nil
+}
+
+func buildTimePoints(objects []map[string]interface{}, timeField, valueField, metric string) []map[string]interface{} {
+	// Bucket by month
+	buckets := map[string][]float64{}
+	bucketOrder := []string{}
+
+	for _, o := range objects {
+		ts := fmt.Sprintf("%v", o[timeField])
+		t := parseTime(ts)
+		key := t.Format("2006-01")
+
+		if _, seen := buckets[key]; !seen {
+			bucketOrder = append(bucketOrder, key)
+		}
+
+		if metric == "raw" || valueField != "" {
+			buckets[key] = append(buckets[key], toFloat(o[valueField]))
+		} else {
+			buckets[key] = append(buckets[key], 1)
+		}
+	}
+
+	sort.Strings(bucketOrder)
+
+	var points []map[string]interface{}
+	for _, key := range bucketOrder {
+		vals := buckets[key]
+		var value float64
+		switch metric {
+		case "count":
+			value = float64(len(vals))
+		case "sum", "raw":
+			for _, v := range vals {
+				value += v
+			}
+		case "avg", "average":
+			for _, v := range vals {
+				value += v
+			}
+			value /= float64(len(vals))
+		default:
+			value = float64(len(vals))
+		}
+		points = append(points, map[string]interface{}{
+			"time":  key,
+			"value": math.Round(value*100) / 100,
+		})
+	}
+	return points
+}
+
+// --- Rolling Aggregate ---
+
+func (e *Engine) executeRollingAggregate(card models.Card, inputs map[uuid.UUID]*models.CardResult) (interface{}, error) {
+	var config struct {
+		TimeField  string `json:"timeField"`
+		ValueField string `json:"valueField"`
+		Window     int    `json:"window"` // number of periods
+		Type       string `json:"type"`   // moving_average, moving_sum
+	}
+	if err := json.Unmarshal(card.Config, &config); err != nil {
+		config.Window = 3
+		config.Type = "moving_average"
+	}
+	if config.Window <= 0 {
+		config.Window = 3
+	}
+	if config.TimeField == "" {
+		config.TimeField = "order_date"
+	}
+	if config.Type == "" {
+		config.Type = "moving_average"
+	}
+
+	inputObjects := extractObjects(inputs)
+	if len(inputObjects) == 0 {
+		return map[string]interface{}{"series": []interface{}{}, "window": config.Window}, nil
+	}
+
+	// Build base time points
+	sort.Slice(inputObjects, func(i, j int) bool {
+		return fmt.Sprintf("%v", inputObjects[i][config.TimeField]) < fmt.Sprintf("%v", inputObjects[j][config.TimeField])
+	})
+
+	basePoints := buildTimePoints(inputObjects, config.TimeField, config.ValueField, "sum")
+
+	// Apply rolling window
+	var rollingPoints []map[string]interface{}
+	values := make([]float64, len(basePoints))
+	for i, p := range basePoints {
+		values[i] = toFloat(p["value"])
+	}
+
+	for i := range basePoints {
+		start := i - config.Window + 1
+		if start < 0 {
+			start = 0
+		}
+		windowVals := values[start : i+1]
+		var sum float64
+		for _, v := range windowVals {
+			sum += v
+		}
+		var val float64
+		if config.Type == "moving_average" {
+			val = sum / float64(len(windowVals))
+		} else {
+			val = sum
+		}
+		rollingPoints = append(rollingPoints, map[string]interface{}{
+			"time":  basePoints[i]["time"],
+			"value": math.Round(val*100) / 100,
+		})
+	}
+
+	return map[string]interface{}{
+		"series": []map[string]interface{}{
+			{"name": "raw", "points": basePoints},
+			{"name": config.Type, "points": rollingPoints},
+		},
+		"window":    config.Window,
+		"timeField": config.TimeField,
+		"grouped":   true,
+	}, nil
+}
+
+// --- Formula ---
+
+func (e *Engine) executeFormula(card models.Card, inputs map[uuid.UUID]*models.CardResult) (interface{}, error) {
+	var config struct {
+		Expression string `json:"expression"`
+		Mode       string `json:"mode"` // "aggregate" or "per_row"
+	}
+	if err := json.Unmarshal(card.Config, &config); err != nil {
+		return nil, fmt.Errorf("parsing formula config: %w", err)
+	}
+	if config.Expression == "" {
+		return map[string]interface{}{"value": 0, "label": "No formula"}, nil
+	}
+
+	node, err := formula.Parse(config.Expression)
+	if err != nil {
+		return nil, fmt.Errorf("parsing formula: %w", err)
+	}
+
+	inputObjects := extractObjects(inputs)
+
+	if config.Mode == "per_row" {
+		// Evaluate formula for each row
+		results := formula.EvaluatePerRow(node, inputObjects)
+		var rows []map[string]interface{}
+		for i, obj := range inputObjects {
+			row := map[string]interface{}{}
+			for k, v := range obj {
+				row[k] = v
+			}
+			row["_formula_result"] = results[i].AsFloat()
+			rows = append(rows, row)
+		}
+		cols := []string{}
+		if len(inputObjects) > 0 {
+			for k := range inputObjects[0] {
+				if k != "objectTypeId" && k != "objectTypeID" {
+					cols = append(cols, k)
+				}
+			}
+		}
+		sort.Strings(cols)
+		cols = append(cols, "_formula_result")
+		return map[string]interface{}{
+			"rows":       rows,
+			"columns":    cols,
+			"totalCount": len(rows),
+			"mode":       "per_row",
+		}, nil
+	}
+
+	// Aggregate mode (default)
+	result := formula.Evaluate(node, inputObjects)
+	return map[string]interface{}{
+		"value":      result.AsFloat(),
+		"label":      card.Label,
+		"expression": config.Expression,
+		"type":       "formula",
+	}, nil
+}
+
+// --- Overlay Chart ---
+
+func (e *Engine) executeOverlayChart(card models.Card, inputs map[uuid.UUID]*models.CardResult) (interface{}, error) {
+	// Overlay combines chart data from multiple input charts
+	var layers []map[string]interface{}
+
+	for inputID, input := range inputs {
+		if input.Error != "" || len(input.Data) == 0 {
+			continue
+		}
+
+		var inputData map[string]interface{}
+		if err := json.Unmarshal(input.Data, &inputData); err != nil {
+			continue
+		}
+
+		layer := map[string]interface{}{
+			"cardId": inputID.String(),
+		}
+
+		// Check for chart data
+		if chartData, ok := inputData["chartData"]; ok {
+			layer["chartData"] = chartData
+			layer["type"] = "bar" // default
+		}
+		// Check for time series data
+		if series, ok := inputData["series"]; ok {
+			layer["series"] = series
+			layer["type"] = "line"
+		}
+
+		// Override type from config if provided
+		var cfg struct {
+			LayerTypes map[string]string `json:"layerTypes"`
+		}
+		if err := json.Unmarshal(card.Config, &cfg); err == nil && cfg.LayerTypes != nil {
+			if lt, ok := cfg.LayerTypes[inputID.String()]; ok {
+				layer["type"] = lt
+			}
+		}
+
+		layers = append(layers, layer)
+	}
+
+	return map[string]interface{}{
+		"layers": layers,
+		"config": card.Config,
+	}, nil
+}
+
+// --- Action ---
+
 func (e *Engine) executeAction(ctx context.Context, card models.Card, inputs map[uuid.UUID]*models.CardResult) (interface{}, error) {
 	var config struct {
 		ActionTypeID      string            `json:"actionTypeId"`
 		ParameterMappings map[string]string `json:"parameterMappings"`
+		Execute           bool              `json:"execute"`
 	}
 	if err := json.Unmarshal(card.Config, &config); err != nil {
 		return nil, fmt.Errorf("parsing action config: %w", err)
@@ -454,19 +792,36 @@ func (e *Engine) executeAction(ctx context.Context, card models.Card, inputs map
 
 	// Build parameters from inputs
 	params := map[string]interface{}{}
-	for paramName, inputRef := range config.ParameterMappings {
-		for _, input := range inputs {
-			params[paramName] = input.Data
-			_ = inputRef
-			break
+	inputObjects := extractObjects(inputs)
+	for paramName, fieldRef := range config.ParameterMappings {
+		if len(inputObjects) > 0 {
+			parts := strings.SplitN(fieldRef, ".", 2)
+			if len(parts) == 2 {
+				params[paramName] = inputObjects[0][parts[1]]
+			} else {
+				params[paramName] = inputObjects[0][fieldRef]
+			}
 		}
 	}
 
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"actionTypeId": config.ActionTypeID,
 		"parameters":   params,
 		"status":       "ready",
-	}, nil
+	}
+
+	if config.Execute {
+		// Call ontology action API
+		err := e.ontologyClient.ExecuteAction(ctx, config.ActionTypeID, params)
+		if err != nil {
+			result["status"] = "error"
+			result["error"] = err.Error()
+		} else {
+			result["status"] = "executed"
+		}
+	}
+
+	return result, nil
 }
 
 func (e *Engine) executeParameter(card models.Card) (interface{}, error) {
@@ -474,8 +829,12 @@ func (e *Engine) executeParameter(card models.Card) (interface{}, error) {
 	if err := json.Unmarshal(card.Config, &config); err != nil {
 		return card.Config, nil
 	}
+	value := config["value"]
+	if value == nil {
+		value = config["defaultValue"]
+	}
 	return map[string]interface{}{
-		"value":  config["defaultValue"],
+		"value":  value,
 		"label":  config["label"],
 		"config": config,
 	}, nil
@@ -509,7 +868,6 @@ func extractObjectsFromResult(input *models.CardResult) []map[string]interface{}
 		Objects []map[string]interface{} `json:"objects"`
 	}
 	if err := json.Unmarshal(input.Data, &wrapper); err == nil && len(wrapper.Objects) > 0 {
-		// Flatten: if objects have "properties" sub-object, merge up
 		var flat []map[string]interface{}
 		for _, o := range wrapper.Objects {
 			if props, ok := o["properties"].(map[string]interface{}); ok {
@@ -545,6 +903,19 @@ func toFloat(v interface{}) float64 {
 		return f
 	}
 	return 0
+}
+
+func parseTime(s string) time.Time {
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 func topologicalSort(cards []models.Card) ([]models.Card, error) {

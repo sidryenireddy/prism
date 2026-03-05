@@ -187,6 +187,37 @@ func (c *Client) AggregateObjects(ctx context.Context, query AggregationQuery) (
 	return result, nil
 }
 
+func (c *Client) ExecuteAction(ctx context.Context, actionTypeID string, params map[string]interface{}) error {
+	body := map[string]interface{}{
+		"actionTypeId": actionTypeID,
+		"parameters":   params,
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/api/v1/actions/execute", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("executing action: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("action API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
 func (c *Client) GetLinkedObjects(ctx context.Context, objectID, objectTypeID string) (*SearchResult, error) {
 	url := fmt.Sprintf("%s/api/v1/links?objectId=%s&objectTypeId=%s", c.baseURL, objectID, objectTypeID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)

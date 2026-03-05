@@ -31,6 +31,8 @@ interface AnalysisCanvasProps {
   onConnect: (sourceId: string, targetId: string) => void;
   onExecute: () => void;
   onAiGenerate?: (prompt: string) => Promise<void>;
+  onExecuteAction?: (cardId: string) => void;
+  onSaveDataset?: (cardId: string) => void;
 }
 
 export function AnalysisCanvas({
@@ -42,6 +44,8 @@ export function AnalysisCanvas({
   onConnect,
   onExecute,
   onAiGenerate,
+  onExecuteAction,
+  onSaveDataset,
 }: AnalysisCanvasProps) {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [graphMode, setGraphMode] = useState(false);
@@ -118,6 +122,7 @@ export function AnalysisCanvas({
               config: { ...card.config, value },
             });
           },
+          onExecuteAction: onExecuteAction ? () => onExecuteAction(card.id) : undefined,
         },
       })),
     [cards, results, onDeleteCard, onUpdateCard, graphPositions]
@@ -250,6 +255,8 @@ export function AnalysisCanvas({
             onUpdateCard(selectedCard.id, data);
           }}
           onClose={() => setSelectedCard(null)}
+          onExecuteAction={onExecuteAction ? () => onExecuteAction(selectedCard.id) : undefined}
+          onSaveDataset={onSaveDataset ? () => onSaveDataset(selectedCard.id) : undefined}
         />
       )}
     </div>

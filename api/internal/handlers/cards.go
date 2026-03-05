@@ -160,6 +160,74 @@ func (h *CardHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *CardHandler) ExecuteAction(w http.ResponseWriter, r *http.Request) {
+	cardID, err := uuid.Parse(chi.URLParam(r, "cardId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid card id")
+		return
+	}
+
+	// Fetch the card
+	var c models.Card
+	err = h.db.QueryRow(r.Context(),
+		"SELECT id, analysis_id, card_type, label, config, position_x, position_y, input_card_ids, created_at, updated_at FROM cards WHERE id = $1", cardID).
+		Scan(&c.ID, &c.AnalysisID, &c.CardType, &c.Label, &c.Config, &c.PositionX, &c.PositionY, &c.InputCardIDs, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "card not found")
+		return
+	}
+
+	if c.CardType != models.CardTypeActionButton {
+		writeError(w, http.StatusBadRequest, "card is not an action button")
+		return
+	}
+
+	// Set execute flag in config
+	var config map[string]interface{}
+	json.Unmarshal(c.Config, &config)
+	config["execute"] = true
+	newConfig, _ := json.Marshal(config)
+	c.Config = newConfig
+
+	// Execute the full analysis to get inputs
+	rows, err := h.db.Query(r.Context(),
+		"SELECT id, analysis_id, card_type, label, config, position_x, position_y, input_card_ids, created_at, updated_at FROM cards WHERE analysis_id = $1",
+		c.AnalysisID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var cards []models.Card
+	for rows.Next() {
+		var card models.Card
+		if err := rows.Scan(&card.ID, &card.AnalysisID, &card.CardType, &card.Label, &card.Config, &card.PositionX, &card.PositionY, &card.InputCardIDs, &card.CreatedAt, &card.UpdatedAt); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		// Replace the action card with execute=true version
+		if card.ID == c.ID {
+			card.Config = c.Config
+		}
+		cards = append(cards, card)
+	}
+
+	results, err := h.engine.Execute(r.Context(), cards)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	actionResult := results[c.ID]
+	if actionResult == nil {
+		writeError(w, http.StatusInternalServerError, "action card not executed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, actionResult)
+}
+
 func (h *CardHandler) Execute(w http.ResponseWriter, r *http.Request) {
 	analysisID, err := uuid.Parse(chi.URLParam(r, "analysisId"))
 	if err != nil {

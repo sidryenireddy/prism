@@ -17,14 +17,17 @@ import type {
   Analysis,
   Card,
   Dashboard,
+  Dataset,
   ExecuteAnalysisResponse,
   MockObjectType,
+  CardResult,
 } from "@/types";
 
 export const api = {
   // Analyses
   listAnalyses: () => request<Analysis[]>("/analyses"),
   getAnalysis: (id: string) => request<Analysis>(`/analyses/${id}`),
+  getAnalysisByShareToken: (token: string) => request<Analysis>(`/analyses/shared/${token}`),
   createAnalysis: (data: { name: string; description: string; owner: string }) =>
     request<Analysis>("/analyses", { method: "POST", body: JSON.stringify(data) }),
   updateAnalysis: (id: string, data: Partial<Analysis>) =>
@@ -45,6 +48,8 @@ export const api = {
   // Execute
   executeAnalysis: (analysisId: string) =>
     request<ExecuteAnalysisResponse>(`/analyses/${analysisId}/execute`, { method: "POST" }),
+  executeAction: (cardId: string) =>
+    request<CardResult>(`/cards/${cardId}/execute-action`, { method: "POST" }),
 
   // Dashboards
   listDashboards: () => request<Dashboard[]>("/dashboards"),
@@ -55,6 +60,14 @@ export const api = {
     request<Dashboard>(`/dashboards/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteDashboard: (id: string) =>
     request<void>(`/dashboards/${id}`, { method: "DELETE" }),
+
+  // Datasets
+  saveDataset: (data: { analysis_id: string; card_id: string; name: string }) =>
+    request<Dataset>("/datasets", { method: "POST", body: JSON.stringify(data) }),
+  listDatasets: () => request<Dataset[]>("/datasets"),
+  getDataset: (id: string) => request<Dataset>(`/datasets/${id}`),
+  deleteDataset: (id: string) =>
+    request<void>(`/datasets/${id}`, { method: "DELETE" }),
 
   // AI
   aiGenerate: (data: { analysis_id: string; prompt: string; cards: Card[] }) =>
