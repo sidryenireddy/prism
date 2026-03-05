@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prism
+      POSTGRES_PASSWORD: prism
+      POSTGRES_DB: prism
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://prism:prism@postgres:5432/prism?sslmode=disable
+      ONTOLOGY_URL: https://ontology.rebelinc.ai
+      PORT: "8080"
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8080
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

@@ -1,0 +1,497 @@
+openapi: 3.0.3
+info:
+  title: Prism API
+  description: Analytics and dashboard platform built on ontology objects
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080/api/v1
+
+paths:
+  /analyses:
+    get:
+      summary: List analyses
+      operationId: listAnalyses
+      responses:
+        "200":
+          description: List of analyses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Analysis"
+    post:
+      summary: Create analysis
+      operationId: createAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnalysisRequest"
+      responses:
+        "201":
+          description: Created analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+
+  /analyses/{id}:
+    get:
+      summary: Get analysis
+      operationId: getAnalysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Analysis details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+    patch:
+      summary: Update analysis
+      operationId: updateAnalysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAnalysisRequest"
+      responses:
+        "200":
+          description: Updated analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+    delete:
+      summary: Delete analysis
+      operationId: deleteAnalysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+
+  /analyses/{analysisId}/cards:
+    get:
+      summary: List cards in analysis
+      operationId: listCards
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Card"
+    post:
+      summary: Create card
+      operationId: createCard
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCardRequest"
+      responses:
+        "201":
+          description: Created card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+
+  /analyses/{analysisId}/cards/{cardId}:
+    patch:
+      summary: Update card
+      operationId: updateCard
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCardRequest"
+      responses:
+        "200":
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+    delete:
+      summary: Delete card
+      operationId: deleteCard
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+
+  /analyses/{analysisId}/execute:
+    post:
+      summary: Execute all cards in analysis
+      operationId: executeAnalysis
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Execution results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecuteAnalysisResponse"
+
+  /dashboards:
+    get:
+      summary: List dashboards
+      operationId: listDashboards
+      responses:
+        "200":
+          description: List of dashboards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Dashboard"
+    post:
+      summary: Create dashboard
+      operationId: createDashboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDashboardRequest"
+      responses:
+        "201":
+          description: Created dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+
+  /dashboards/{id}:
+    get:
+      summary: Get dashboard
+      operationId: getDashboard
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Dashboard details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+    patch:
+      summary: Update dashboard
+      operationId: updateDashboard
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDashboardRequest"
+      responses:
+        "200":
+          description: Updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+    delete:
+      summary: Delete dashboard
+      operationId: deleteDashboard
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+
+components:
+  schemas:
+    CardType:
+      type: string
+      enum:
+        - filter_object_set
+        - search_around
+        - set_math_union
+        - set_math_intersection
+        - set_math_difference
+        - bar_chart
+        - line_chart
+        - pie_chart
+        - scatter_plot
+        - heat_grid
+        - map
+        - object_table
+        - pivot_table
+        - transform_table
+        - count
+        - sum
+        - average
+        - min
+        - max
+        - time_series_chart
+        - rolling_aggregate
+        - formula_plot
+        - param_object_selection
+        - param_date_range
+        - param_numeric
+        - param_string
+        - param_boolean
+        - action_button
+
+    Analysis:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        owner:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateAnalysisRequest:
+      type: object
+      required: [name, owner]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        owner:
+          type: string
+
+    UpdateAnalysisRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    Card:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        analysis_id:
+          type: string
+          format: uuid
+        card_type:
+          $ref: "#/components/schemas/CardType"
+        label:
+          type: string
+        config:
+          type: object
+        position_x:
+          type: number
+        position_y:
+          type: number
+        input_card_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateCardRequest:
+      type: object
+      required: [card_type]
+      properties:
+        card_type:
+          $ref: "#/components/schemas/CardType"
+        label:
+          type: string
+        config:
+          type: object
+        position_x:
+          type: number
+        position_y:
+          type: number
+        input_card_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UpdateCardRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        config:
+          type: object
+        position_x:
+          type: number
+        position_y:
+          type: number
+        input_card_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    Dashboard:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        analysis_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        published:
+          type: boolean
+        layout:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateDashboardRequest:
+      type: object
+      required: [analysis_id, name]
+      properties:
+        analysis_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        layout:
+          type: object
+
+    UpdateDashboardRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        published:
+          type: boolean
+        layout:
+          type: object
+
+    ExecuteAnalysisResponse:
+      type: object
+      properties:
+        results:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CardResult"
+
+    CardResult:
+      type: object
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        card_type:
+          $ref: "#/components/schemas/CardType"
+        data:
+          type: object
+        error:
+          type: string
